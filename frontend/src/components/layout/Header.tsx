@@ -1,66 +1,111 @@
 import React from 'react';
-import { Shield, User, LogOut, BarChart3 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
-import { cn } from '../../utils/cn.ts';
+import { LogOut, Menu, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
-  title?: string;
+  onMenuToggle?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ title = 'CyberShield' }) => {
-  const { user, logout, isAdmin } = useAuth();
+export const Header: React.FC<HeaderProps> = ({ onMenuToggle }) => {
+  const navigate = useNavigate();
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    navigate('/login');
+  };
+
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+    if (onMenuToggle) {
+      onMenuToggle();
+    }
+  };
 
   return (
-    <header className="glass sticky top-0 z-50 border-b border-cyber-blue/20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-cyber-blue/10 rounded-lg">
-              <Shield className="w-8 h-8 text-cyber-blue" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-cyber-blue to-cyber-purple bg-clip-text text-transparent">
-                {title}
-              </h1>
-              <p className="text-xs text-gray-400">AI-Powered Security</p>
-            </div>
+    <header className="sticky top-0 z-40 w-full border-b border-gray-800 bg-cyber-dark/95 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+        {/* Logo */}
+        <div className="flex items-center space-x-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyber-blue to-cyber-purple">
+            <span className="text-sm font-bold text-white">🛡️</span>
           </div>
-
-          {/* User Menu */}
-          <div className="flex items-center space-x-4">
-            {user && (
-              <>
-                {isAdmin && (
-                  <a
-                    href="/dashboard"
-                    className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-cyber-blue/10 transition-all"
-                  >
-                    <BarChart3 className="w-4 h-4" />
-                    <span className="hidden sm:inline">Analytics</span>
-                  </a>
-                )}
-                
-                <div className="flex items-center space-x-3 px-3 py-2 rounded-lg bg-cyber-dark/50">
-                  <User className="w-5 h-5 text-cyber-blue" />
-                  <span className="text-sm font-medium text-gray-200">{user.username}</span>
-                  <span className="px-2 py-0.5 text-xs rounded-full bg-cyber-purple/20 text-cyber-purple border border-cyber-purple/30">
-                    {user.role}
-                  </span>
-                </div>
-
-                <button
-                  onClick={logout}
-                  className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-red-500/10 transition-all"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span className="hidden sm:inline">Logout</span>
-                </button>
-              </>
-            )}
-          </div>
+          <span className="hidden text-xl font-bold text-white sm:inline">
+            CyberShield
+          </span>
         </div>
+
+        {/* Desktop Navigation */}
+        <nav className="hidden items-center space-x-1 md:flex">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-gray-400 hover:bg-gray-900 hover:text-white transition-all"
+          >
+            Dashboard
+          </button>
+          <button
+            onClick={() => navigate('/analytics')}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-gray-400 hover:bg-gray-900 hover:text-white transition-all"
+          >
+            Analytics
+          </button>
+        </nav>
+
+        {/* Desktop Actions */}
+        <div className="hidden items-center space-x-4 md:flex">
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center space-x-2 rounded-lg px-4 py-2 text-sm font-medium text-gray-400 hover:bg-gray-900 hover:text-white transition-all"
+          >
+            <LogOut className="h-4 w-4" />
+            <span>Logout</span>
+          </button>
+        </div>
+
+        {/* Mobile Menu Button */}
+        <button
+          onClick={toggleMobileMenu}
+          className="rounded-lg p-2 text-gray-400 hover:bg-gray-900 md:hidden"
+        >
+          {mobileMenuOpen ? (
+            <X className="h-6 w-6" />
+          ) : (
+            <Menu className="h-6 w-6" />
+          )}
+        </button>
       </div>
+
+      {/* Mobile Menu */}
+      {mobileMenuOpen && (
+        <div className="border-t border-gray-800 bg-cyber-dark px-4 py-4 md:hidden">
+          <nav className="space-y-2">
+            <button
+              onClick={() => {
+                navigate('/dashboard');
+                setMobileMenuOpen(false);
+              }}
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-400 hover:bg-gray-900 hover:text-white transition-all"
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => {
+                navigate('/analytics');
+                setMobileMenuOpen(false);
+              }}
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-400 hover:bg-gray-900 hover:text-white transition-all"
+            >
+              Analytics
+            </button>
+            <button
+              onClick={handleLogout}
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-400 hover:bg-gray-900 hover:text-white transition-all"
+            >
+              Logout
+            </button>
+          </nav>
+        </div>
+      )}
     </header>
   );
 };

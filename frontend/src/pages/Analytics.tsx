@@ -1,297 +1,190 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, AlertTriangle, CheckCircle, TrendingUp, Activity, FileText } from 'lucide-react';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Layout } from '../components/layout/Layout';
 import { analyticsApi } from '../services/api';
-import type { ScanStats } from '../types';
-import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-
-const COLORS = ['#00d4ff', '#10b981', '#ef4444', '#f59e0b'];
+import type { UserStats } from '../types';
 
 export const Analytics: React.FC = () => {
-  const [stats, setStats] = useState<ScanStats | null>(null);
-  const [trends, setTrends] = useState<any>(null);
-  const [users, setUsers] = useState<any>(null);
-  const [topMalware, setTopMalware] = useState<any[]>([]);
-  const [recentScans, setRecentScans] = useState<any[]>([]);
+  const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    loadAnalytics();
+    loadStats();
   }, []);
 
-  const loadAnalytics = async () => {
-    setLoading(true);
+  const loadStats = async () => {
     try {
-      const [statsData, trendsData, usersData, malwareData, scansData] = await Promise.all([
-        analyticsApi.getStats(),
-        analyticsApi.getTrends(30),
-        analyticsApi.getUsers(),
-        analyticsApi.getTopMalware(10),
-        analyticsApi.getRecentScans(20)
-      ]);
-      
-      setStats(statsData);
-      setTrends(trendsData);
-      setUsers(usersData);
-      setTopMalware(malwareData);
-      setRecentScans(scansData);
-    } catch (err) {
-      console.error('Error loading analytics:', err);
+      setLoading(true);
+      const userStats = await analyticsApi.getMyStats();
+      setStats(userStats);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to load analytics');
     } finally {
       setLoading(false);
     }
   };
 
-  const pieData = stats ? [
-    { name: 'Benign', value: stats.benign_count },
-    { name: 'Malicious', value: stats.malicious_count },
-    { name: 'Suspicious', value: stats.suspicious_count },
-    { name: 'Zero-Day', value: stats.zero_day_count }
-  ] : [];
-
-  const barData = topMalware.map(item => ({
-    name: item.filename.substring(0, 20) + '...',
-    count: item.count
-  }));
-
-  const trendData = trends ? Object.entries(trends).map(([date, results]: [string, any]) => ({
-    date: date.substring(5), // Show MM-DD
-    malicious: results.malicious || 0,
-    benign: results.benign || 0,
-    suspicious: results.suspicious || 0
-  })) : [];
-
   if (loading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-96">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-cyber-blue border-t-transparent"></div>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="mb-4 inline-block animate-spin rounded-full h-12 w-12 border-4 border-cyber-blue border-t-transparent" />
+            <p className="text-gray-400">Loading analytics...</p>
+          </div>
         </div>
       </Layout>
     );
   }
 
+  if (error) {
+    return (
+      <Layout>
+        <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-4 text-red-400">
+          {error}
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <Layout>
+        <div className="text-center py-12 text-gray-400">
+          No data available
+        </div>
+      </Layout>
+    );
+  }
+
+  // Prepare chart data
+  const chartData = [
+    {
+      name: 'Malicious',
+      value: stats.malicious_count,
+      fill: '#ef4444'
+    },
+    {
+      name: 'Benign',
+      value: stats.benign_count,
+      fill: '#22c55e'
+    },
+    {
+      name: 'Suspicious',
+      value: (stats.total_scans - stats.malicious_count - stats.benign_count),
+      fill: '#eab308'
+    }
+  ];
+
+  const lineChartData = [
+    { name: 'Total Scans', value: stats.total_scans },
+    { name: 'Malicious', value: stats.malicious_count },
+    { name: 'Benign', value: stats.benign_count },
+    { name: 'Zero-Day', value: stats.zero_day_count }
+  ];
+
   return (
-    <Layout title="Admin Analytics">
+    <Layout>
       <div className="space-y-8">
-        {/* Stats Overview */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="glass rounded-xl p-6 cyber-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-400">Total Scans</p>
-                  <p className="text-2xl font-bold text-white">{stats.total_scans}</p>
-                </div>
-                <Activity className="w-8 h-8 text-cyber-blue opacity-50" />
-              </div>
-            </div>
-
-            <div className="glass rounded-xl p-6 border border-red-500/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-400">Malicious</p>
-                  <p className="text-2xl font-bold text-red-500">{stats.malicious_count}</p>
-                </div>
-                <AlertTriangle className="w-8 h-8 text-red-500 opacity-50" />
-              </div>
-            </div>
-
-            <div className="glass rounded-xl p-6 border border-green-500/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-400">Benign</p>
-                  <p className="text-2xl font-bold text-green-500">{stats.benign_count}</p>
-                </div>
-                <CheckCircle className="w-8 h-8 text-green-500 opacity-50" />
-              </div>
-            </div>
-
-            <div className="glass rounded-xl p-6 border border-purple-500/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-400">Success Rate</p>
-                  <p className="text-2xl font-bold text-purple-500">{stats.success_rate}%</p>
-                </div>
-                <TrendingUp className="w-8 h-8 text-purple-500 opacity-50" />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Detection Distribution */}
+        {/* Stats Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="glass rounded-xl p-6 cyber-border">
-            <h3 className="text-lg font-semibold text-white mb-6">Detection Distribution</h3>
+            <p className="text-sm text-gray-400">Total Scans</p>
+            <p className="mt-2 text-3xl font-bold text-white">{stats.total_scans}</p>
+          </div>
+          <div className="glass rounded-xl p-6 border border-red-500/20">
+            <p className="text-sm text-gray-400">Malicious</p>
+            <p className="mt-2 text-3xl font-bold text-red-500">{stats.malicious_count}</p>
+          </div>
+          <div className="glass rounded-xl p-6 border border-green-500/20">
+            <p className="text-sm text-gray-400">Benign</p>
+            <p className="mt-2 text-3xl font-bold text-green-500">{stats.benign_count}</p>
+          </div>
+          <div className="glass rounded-xl p-6 border border-purple-500/20">
+            <p className="text-sm text-gray-400">Zero-Day</p>
+            <p className="mt-2 text-3xl font-bold text-purple-500">{stats.zero_day_count}</p>
+          </div>
+        </div>
+
+        {/* Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Pie Chart */}
+          <div className="glass rounded-2xl p-6 cyber-border">
+            <h2 className="mb-6 text-lg font-bold text-white">Detection Results</h2>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={pieData}
+                  data={chartData}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, value }) => `${name}: ${value}`}
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #00d4ff' }}
+                  labelStyle={{ color: '#fff' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Top Malware */}
-          <div className="glass rounded-xl p-6 cyber-border">
-            <h3 className="text-lg font-semibold text-white mb-6">Top Detected Malware</h3>
+          {/* Line Chart */}
+          <div className="glass rounded-2xl p-6 cyber-border">
+            <h2 className="mb-6 text-lg font-bold text-white">Scan Statistics</h2>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={barData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="name" stroke="#9ca3af" tick={{ fontSize: 12 }} />
-                <YAxis stroke="#9ca3af" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#111827',
-                    border: '1px solid #374151',
-                    borderRadius: '8px'
-                  }}
+              <LineChart data={lineChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="name" stroke="#999" />
+                <YAxis stroke="#999" />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #00d4ff' }}
+                  labelStyle={{ color: '#fff' }}
                 />
-                <Bar dataKey="count" fill="#ef4444" radius={[4, 4, 0, 0]} />
-              </BarChart>
+                <Legend />
+                <Line 
+                  type="monotone" 
+                  dataKey="value" 
+                  stroke="#00d4ff" 
+                  dot={{ fill: '#00d4ff', r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Trends Chart */}
-        <div className="glass rounded-xl p-6 cyber-border">
-          <h3 className="text-lg font-semibold text-white mb-6">Detection Trends (Last 30 Days)</h3>
+        {/* Bar Chart */}
+        <div className="glass rounded-2xl p-6 cyber-border">
+          <h2 className="mb-6 text-lg font-bold text-white">Threat Distribution</h2>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={trendData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="date" stroke="#9ca3af" />
-              <YAxis stroke="#9ca3af" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#111827',
-                  border: '1px solid #374151',
-                  borderRadius: '8px'
-                }}
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+              <XAxis dataKey="name" stroke="#999" />
+              <YAxis stroke="#999" />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #00d4ff' }}
+                labelStyle={{ color: '#fff' }}
               />
-              <Legend />
-              <Line type="monotone" dataKey="malicious" stroke="#ef4444" strokeWidth={2} />
-              <Line type="monotone" dataKey="benign" stroke="#10b981" strokeWidth={2} />
-              <Line type="monotone" dataKey="suspicious" stroke="#f59e0b" strokeWidth={2} />
-            </LineChart>
+              <Bar dataKey="value" fill="#00d4ff" radius={[8, 8, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* User Stats */}
-        {users && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="glass rounded-xl p-6 cyber-border">
-              <h3 className="text-lg font-semibold text-white mb-6">User Statistics</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-lg bg-cyber-dark border border-gray-700">
-                  <div className="flex items-center space-x-3">
-                    <Users className="w-8 h-8 text-cyber-blue" />
-                    <div>
-                      <p className="text-sm text-gray-400">Total Users</p>
-                      <p className="text-xl font-bold text-white">{users.total_users}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-4 rounded-lg bg-cyber-dark border border-gray-700">
-                  <div className="flex items-center space-x-3">
-                    <Shield className="w-8 h-8 text-purple-500" />
-                    <div>
-                      <p className="text-sm text-gray-400">Admins</p>
-                      <p className="text-xl font-bold text-white">{users.admin_count}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-4 rounded-lg bg-cyber-dark border border-gray-700 col-span-2">
-                  <div className="flex items-center space-x-3">
-                    <FileText className="w-8 h-8 text-cyber-green" />
-                    <div>
-                      <p className="text-sm text-gray-400">Regular Users</p>
-                      <p className="text-xl font-bold text-white">{users.user_count}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent Users */}
-            <div className="glass rounded-xl p-6 cyber-border">
-              <h3 className="text-lg font-semibold text-white mb-6">Recent Users</h3>
-              <div className="space-y-3">
-                {users.recent_users.map((user: any) => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-cyber-dark border border-gray-700"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyber-blue to-cyber-purple flex items-center justify-center text-white font-bold">
-                        {user.username.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium text-white">{user.username}</p>
-                        <p className="text-sm text-gray-400">{user.email}</p>
-                      </div>
-                    </div>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      user.role === 'admin'
-                        ? 'bg-purple-500/20 text-purple-500 border border-purple-500/30'
-                        : 'bg-blue-500/20 text-blue-500 border border-blue-500/30'
-                    }`}>
-                      {user.role}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Recent Scans */}
-        <div className="glass rounded-xl p-6 cyber-border">
-          <h3 className="text-lg font-semibold text-white mb-6">Recent Scans Across All Users</h3>
-          <div className="space-y-3">
-            {recentScans.map((scan) => (
-              <div
-                key={scan.id}
-                className="flex items-center justify-between p-4 rounded-lg bg-cyber-dark border border-gray-700 hover:border-cyber-blue/30 transition-all"
-              >
-                <div className="flex items-center space-x-4">
-                  <FileText className="w-5 h-5 text-gray-500" />
-                  <div>
-                    <p className="font-medium text-white">{scan.filename}</p>
-                    <p className="text-sm text-gray-400">
-                      by {scan.user} • {new Date(scan.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  {scan.detection_result === 'malicious' && (
-                    <span className="px-2 py-1 text-xs rounded-full bg-red-500/20 text-red-500 border border-red-500/30">
-                      Malicious
-                    </span>
-                  )}
-                  {scan.detection_result === 'benign' && (
-                    <span className="px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-500 border border-green-500/30">
-                      Benign
-                    </span>
-                  )}
-                  <span className="text-sm text-gray-400">{scan.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* Refresh Button */}
+        <button
+          onClick={loadStats}
+          className="w-full rounded-lg bg-gradient-to-r from-cyber-blue to-cyber-purple px-6 py-3 font-semibold text-white hover:opacity-90 transition-all"
+        >
+          Refresh Analytics
+        </button>
       </div>
     </Layout>
   );
