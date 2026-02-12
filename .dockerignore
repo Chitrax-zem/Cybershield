@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+CONTRIBUTING.md
+LICENSE
+QUICKSTART.md
+PROJECT_SUMMARY.md
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+venv
+env
+.venv
+
+# Environment
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary
+tmp/
+logs/
+*.log
+
+# Build artifacts
+dist/
+build/
+*.egg-info
+
+# Docker
+docker-compose.override.yml
