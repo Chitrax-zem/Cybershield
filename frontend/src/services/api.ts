@@ -1,45 +1,85 @@
 // frontend/src/services/api.ts
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
 import type { AuthResponse, User, Scan, ScanDetail, ScanStats, UserStats } from '../types';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+// Build base URL from env, fallback to localhost
+const API_ORIGIN =
+  (import.meta as any)?.env?.VITE_API_URL
+    ? String((import.meta as any).env.VITE_API_URL).replace(/\/$/, '')
+    : 'http://localhost:8000';
+
+const API_BASE_URL = `${API_ORIGIN}/api`;
+
+// Request timeout (30 seconds)
+const REQUEST_TIMEOUT = 30000;
+
+// Retry configuration
+const MAX_RETRIES = 2;
+const RETRY_DELAY = 1000;
 
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: REQUEST_TIMEOUT,
 });
 
-// Request interceptor: add token and handle FormData
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+// Request interceptor: add token and handle FormData content-type
+api.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
 
-  // Add authorization header if token exists
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  // CRITICAL: Don't force JSON content-type on FormData requests
-  // Let the browser set multipart/form-data with proper boundary
-  if (config.data instanceof FormData) {
-    // Remove the default application/json header
-    delete config.headers['Content-Type'];
-  }
-
-  return config;
-});
-
-// Response interceptor: handle 401 and global errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error?.response?.status === 401) {
-      // Token expired or invalid
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      // Let the browser set multipart/form-data boundary for FormData
+      if (config.data instanceof FormData && config.headers) {
+        delete config.headers['Content-Type'];
+      }
+    } catch {
+      // Ignore localStorage errors in non-browser contexts
     }
+    return config;
+  },
+  (error: AxiosError) => Promise.reject(error)
+);
+
+// Response interceptor: handle 401s, avoid redirect loops
+api.interceptors.response.use(
+  (response: AxiosResponse) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: number };
+    
+    // Handle 401 unauthorized
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      try {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user');
+      } catch {
+        // ignore
+      }
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+
+    // Retry logic for network errors and 5xx errors
+    if (
+      (error.code === 'ECONNABORTED' || 
+       error.code === 'ERR_NETWORK' || 
+       (error.response?.status && error.response.status >= 500)) &&
+      (!originalRequest._retry || originalRequest._retry < MAX_RETRIES)
+    ) {
+      originalRequest._retry = (originalRequest._retry || 0) + 1;
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      
+      return api(originalRequest);
+    }
+
     return Promise.reject(error);
   }
 );
@@ -51,7 +91,7 @@ function extractErrorMessage(error: any): string {
   const status = error?.response?.status;
   const data = error?.response?.data;
 
-  // 422 Validation error (Pydantic)
+  // 422 Validation error (FastAPI/Pydantic)
   if (status === 422 && Array.isArray(data?.detail)) {
     const d = data.detail[0];
     const field = Array.isArray(d?.loc) ? d.loc[d.loc.length - 1] : undefined;
@@ -59,12 +99,22 @@ function extractErrorMessage(error: any): string {
     return field ? `${field}: ${msg}` : msg;
   }
 
-  // Generic detail string
+  // Generic "detail" message from backend
   if (typeof data?.detail === 'string') {
     return data.detail;
   }
 
-  // Fallback to error message
+  // Network timeout
+  if (error.code === 'ECONNABORTED') {
+    return 'Request timeout. Please try again.';
+  }
+
+  // Network error
+  if (error.code === 'ERR_NETWORK') {
+    return 'Network error. Please check your connection.';
+  }
+
+  // Fallback to error.message
   if (error?.message) {
     return error.message;
   }
@@ -82,11 +132,15 @@ export const authApi = {
     return response.data;
   },
 
+  // Use application/x-www-form-urlencoded for FastAPI OAuth2PasswordRequestForm
   login: async (username: string, password: string): Promise<AuthResponse> => {
-    const formData = new FormData();
-    formData.append('username', username);
-    formData.append('password', password);
-    const response = await api.post<AuthResponse>('/auth/login', formData);
+    const params = new URLSearchParams();
+    params.append('username', username);
+    params.append('password', password);
+
+    const response = await api.post<AuthResponse>('/auth/login', params, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
     return response.data;
   },
 
@@ -103,18 +157,11 @@ export const authApi = {
 // ==================== Scan APIs ====================
 export const scanApi = {
   uploadFile: async (file: File): Promise<Scan> => {
-    console.log('📤 Uploading file:', file.name, file.size, 'bytes');
     const formData = new FormData();
     formData.append('file', file);
 
-    try {
-      const response = await api.post<Scan>('/scan/upload', formData);
-      console.log('✅ Upload successful:', response.data);
-      return response.data;
-    } catch (error: any) {
-      console.error('❌ Upload failed:', error?.response?.status, error?.response?.data);
-      throw error;
-    }
+    const response = await api.post<Scan>('/scan/upload', formData);
+    return response.data;
   },
 
   startScan: async (scanId: string): Promise<Scan> => {

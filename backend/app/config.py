@@ -1,7 +1,9 @@
 # backend/app/config.py
 from pydantic_settings import BaseSettings
-from typing import List
+from pydantic import field_validator
+from typing import List, Union
 import os
+import json
 
 class Settings(BaseSettings):
     # MongoDB (Atlas)
@@ -16,23 +18,49 @@ class Settings(BaseSettings):
     # File Upload
     MAX_FILE_SIZE: int = 52428800  # 50MB
     # IMPORTANT: Keep leading dots and use lowercase
-    ALLOWED_EXTENSIONS: List[str] = [".exe", ".apk", ".pdf", ".zip", ".dll", ".docx", ".bin", ".jar"]
+    ALLOWED_EXTENSIONS: Union[List[str], str] = [
+        ".exe",".apk",".pdf",".zip",".dll",".docx",".bin",".jar"
+    ]
     UPLOAD_DIR: str = "uploads"
     TEMP_DIR: str = "temp"
 
-    # Security
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ]
+    # Security - type is List[str] after parsing
+    CORS_ORIGINS: Union[List[str], str] = "http://localhost:5173"
 
     # AI Model (placeholders)
     MODEL_PATH: str = "ml_model/malware_detector.pth"
     FEATURE_SIZE: int = 1000
     CONFIDENCE_THRESHOLD: float = 0.5
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS_ORIGINS from either JSON array or comma-separated string."""
+        if isinstance(v, str):
+            # Try to parse as JSON array first
+            if v.strip().startswith("["):
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    pass  # Fall through to comma-separated parsing
+            # Parse as comma-separated string
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("ALLOWED_EXTENSIONS", mode="before")
+    @classmethod
+    def parse_allowed_extensions(cls, v):
+        """Parse ALLOWED_EXTENSIONS from either JSON array or comma-separated string."""
+        if isinstance(v, str):
+            # Try to parse as JSON array first
+            if v.strip().startswith("["):
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    pass  # Fall through to comma-separated parsing
+            # Parse as comma-separated string
+            return [ext.strip() for ext in v.split(",") if ext.strip()]
+        return v
 
     class Config:
         env_file = ".env"

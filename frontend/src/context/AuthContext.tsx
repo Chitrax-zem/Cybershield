@@ -1,133 +1,138 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { User, AuthResponse } from '../types';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authApi } from '../services/api';
+
+interface User {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+}
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   signup: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
-  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const TOKEN_KEY = 'access_token';
+const USER_KEY = 'user';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Check authentication on mount
   useEffect(() => {
-    // Load persisted auth state
-    const storedToken = localStorage.getItem('access_token');
-    const storedUser = localStorage.getItem('user');
-
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        setUser(null);
-      }
-    }
-    setLoading(false);
+    checkAuth();
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const checkAuth = useCallback(async () => {
     try {
-      const response: AuthResponse = await authApi.login(username, password);
-      setToken(response.access_token);
-      setUser(response.user);
-      localStorage.setItem('access_token', response.access_token);
-      localStorage.setItem('user', JSON.stringify(response.user));
-    } catch (error: any) {
-      const msg = extractErrorMessage(error);
-      throw new Error(msg);
-    }
-  };
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token) {
+        setLoading(false);
+        return;
+      }
 
-  const signup = async (username: string, email: string, password: string) => {
-    try {
-      const response: AuthResponse = await authApi.signup(username, email, password);
-      setToken(response.access_token);
-      setUser(response.user);
-      localStorage.setItem('access_token', response.access_token);
-      localStorage.setItem('user', JSON.stringify(response.user));
-    } catch (error: any) {
-      const msg = extractErrorMessage(error);
-      throw new Error(msg);
+      // Verify token is still valid by fetching user data
+      const userData = await authApi.getMe();
+      setUser(userData);
+    } catch (error) {
+      // Token is invalid, clear storage
+      clearAuthData();
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const clearAuthData = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem('token'); // Also remove any old token key
     setUser(null);
-    setToken(null);
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-  };
+  }, []);
+
+  const login = useCallback(async (username: string, password: string) => {
+    try {
+      const response = await authApi.login(username, password);
+      
+      // Store token
+      localStorage.setItem(TOKEN_KEY, response.access_token);
+      
+      // Store user data
+      if (response.user) {
+        localStorage.setItem(USER_KEY, JSON.stringify(response.user));
+        setUser(response.user);
+      } else {
+        // If user data not in response, fetch it
+        const userData = await authApi.getMe();
+        localStorage.setItem(USER_KEY, JSON.stringify(userData));
+        setUser(userData);
+      }
+    } catch (error: any) {
+      // Clear any partial data
+      clearAuthData();
+      throw new Error(error?.response?.data?.detail || error?.message || 'Login failed');
+    }
+  }, [clearAuthData]);
+
+  const signup = useCallback(async (username: string, email: string, password: string) => {
+    try {
+      const response = await authApi.signup(username, email, password);
+      
+      // Store token
+      localStorage.setItem(TOKEN_KEY, response.access_token);
+      
+      // Store user data
+      if (response.user) {
+        localStorage.setItem(USER_KEY, JSON.stringify(response.user));
+        setUser(response.user);
+      } else {
+        // If user data not in response, fetch it
+        const userData = await authApi.getMe();
+        localStorage.setItem(USER_KEY, JSON.stringify(userData));
+        setUser(userData);
+      }
+    } catch (error: any) {
+      // Clear any partial data
+      clearAuthData();
+      throw new Error(error?.response?.data?.detail || error?.message || 'Signup failed');
+    }
+  }, [clearAuthData]);
+
+  const logout = useCallback(() => {
+    // Clear all auth data
+    clearAuthData();
+    
+    // Call logout API (optional, can fail silently)
+    authApi.logout().catch(() => {
+      // Ignore logout API errors
+    });
+  }, [clearAuthData]);
 
   const value: AuthContextType = {
     user,
-    token,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'admin',
+    loading,
     login,
     signup,
     logout,
-    loading,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 };
-
-/**
- * Convert Axios/FastAPI error to readable string.
- * Handles:
- * - 422 validation errors with detail: [{loc, msg, ...}, ...]
- * - detail as string
- * - generic fallbacks
- */
-function extractErrorMessage(error: any): string {
-  const status = error?.response?.status;
-  const data = error?.response?.data;
-
-  // FastAPI validation error (422)
-  if (status === 422 && data?.detail && Array.isArray(data.detail)) {
-    // Build a concise message from first error
-    const d = data.detail[0];
-    const field = Array.isArray(d?.loc) ? d.loc[d.loc.length - 1] : undefined;
-    const msg = d?.msg || 'Validation error';
-    return field ? `${field}: ${msg}` : msg;
-  }
-
-  // FastAPI HTTPException detail
-  if (typeof data?.detail === 'string') {
-    return data.detail;
-  }
-
-  // JSON {detail: {...}} rare case
-  if (data?.detail && typeof data.detail === 'object') {
-    // Try to stringify safely
-    try {
-      return Object.values(data.detail).join(', ');
-    } catch {
-      return 'Request failed. Please check your input.';
-    }
-  }
-
-  // Generic Axios error message
-  if (error?.message) return error.message;
-
-  return 'Request failed. Please try again.';
-}

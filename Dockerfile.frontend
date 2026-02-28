@@ -1,22 +1,19 @@
-FROM node:20-alpine
+# Use Node image
+FROM node:18
 
 WORKDIR /app
 
 # Copy package files
-COPY frontend/package.json frontend/package-lock.json* ./
+COPY frontend/package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy frontend code
+# Copy entire frontend
 COPY frontend/ .
 
-# Expose port
+# Expose Vite port
 EXPOSE 5173
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:5173 || exit 1
-
-# Run development server
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+# Run dev server
+CMD ["npm", "run", "dev", "--", "--host"]
