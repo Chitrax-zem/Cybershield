@@ -30,15 +30,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS
+# CORS Fix
+origins = settings.CORS_ORIGINS
+
+# Convert string to list if necessary
+if isinstance(origins, str):
+    origins = [origin.strip() for origin in origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Routers
 app.include_router(auth.router)
 app.include_router(scan.router)
