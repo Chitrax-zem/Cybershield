@@ -45,10 +45,10 @@ async def save_upload_file(upload_file: UploadFile, user_id: str) -> tuple[str, 
 
     # Validate extension (case-insensitive) with leading dot (e.g., .exe)
     _, ext = os.path.splitext(upload_file.filename)
-    ext = ext.lower().strip()
+    ext = ext.lower().replace(".", "").strip()
 
     # Normalize allowed list (should already be lowercase with dots)
-    allowed_lower = [e.lower().strip() for e in settings.ALLOWED_EXTENSIONS]
+    allowed_lower = [e.lower().replace(".", "").strip() for e in settings.ALLOWED_EXTENSIONS]
 
     # DEBUG: Print what we're checking
     print(f"DEBUG: Checking extension '{ext}' against allowed: {allowed_lower}")
