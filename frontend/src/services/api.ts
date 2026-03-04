@@ -19,8 +19,7 @@ import type {
 
 // Build base URL from env, fallback to localhost
 const API_ORIGIN =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, '') ||
-  'http://localhost:8000';
+  (import.meta as any)?.env?.VITE_API_URL ? String((import.meta as any).env.VITE_API_URL).replace(/\/$/, '') : 'http://localhost:8000';
 
 const API_BASE_URL = `${API_ORIGIN}/api`;
 
